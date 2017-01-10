@@ -1,21 +1,20 @@
-package lumbercheeseplayer;
+package exampleplayer1;
 import battlecode.common.*;
 
 public strictfp class RobotPlayer {
     static RobotController rc;
-    static Direction startingEnemyDirection;
 
     /**
      * run() is the method that is called when a robot is instantiated in the Battlecode world.
      * If this method returns, the robot dies!
-     **/
+    **/
     @SuppressWarnings("unused")
     public static void run(RobotController rc) throws GameActionException {
-        startingEnemyDirection = rc.getLocation().directionTo(rc.getInitialArchonLocations(rc.getTeam().opponent())[0]);
+
         // This is the RobotController object. You use it to perform actions from this robot,
         // and to get information on its current status.
         RobotPlayer.rc = rc;
-        rc.getInitialArchonLocations(rc.getTeam());
+
         // Here, we've separated the controls into a different method for each RobotType.
         // You can add the missing ones or rewrite this into your own control structure.
         switch (rc.getType()) {
@@ -32,7 +31,7 @@ public strictfp class RobotPlayer {
                 runLumberjack();
                 break;
         }
-    }
+	}
 
     static void runArchon() throws GameActionException {
         System.out.println("I'm an archon!");
@@ -47,7 +46,7 @@ public strictfp class RobotPlayer {
                 Direction dir = randomDirection();
 
                 // Randomly attempt to build a gardener in this direction
-                if (rc.canHireGardener(dir) && (rc.getRoundNum() <= 2 || Math.random() < .01)) {
+                if (rc.canHireGardener(dir)) {
                     rc.hireGardener(dir);
                 }
 
@@ -69,7 +68,7 @@ public strictfp class RobotPlayer {
         }
     }
 
-    static void runGardener() throws GameActionException {
+	static void runGardener() throws GameActionException {
         System.out.println("I'm a gardener!");
 
         // The code you want your robot to perform every round should be in this loop
@@ -87,9 +86,8 @@ public strictfp class RobotPlayer {
                 Direction dir = randomDirection();
 
                 if (rc.canBuildRobot(RobotType.LUMBERJACK, dir) && rc.isBuildReady()) {
-                    rc.buildRobot(RobotType.LUMBERJACK, dir);
+                	rc.buildRobot(RobotType.LUMBERJACK, dir);
                 }
-
 
                 // Move randomly
                 tryMove(randomDirection());
@@ -158,6 +156,7 @@ public strictfp class RobotPlayer {
                     rc.strike();
                 } else {
                     // No close robots, so search for robots within sight radius
+                	
                     robots = rc.senseNearbyRobots(-1,enemy);
 
                     // If there is a robot, move towards it
@@ -169,11 +168,8 @@ public strictfp class RobotPlayer {
                         rc.broadcast(4,(int)enemyLocation.y);
 
                         tryMove(toEnemy);
-                    }
-                        else if(rc.onTheMap(rc.getLocation().add(startingEnemyDirection,10f)) && rc.canMove(startingEnemyDirection)) {
-                        //if you're not close to the end of the map and you can move go towards the enemy spawn
-                        rc.move(startingEnemyDirection);
-                    }else{ // Read broadcasts and if there is a broadcast of enemy location go to it
+                    } else {
+                        // Read broadcasts and if there is a broadcast of enemy location go to it
                     	MapLocation myLocation = rc.getLocation();
                     	int EnemyxPos = rc.readBroadcast(3);
                         int EnemyyPos = rc.readBroadcast(4);
