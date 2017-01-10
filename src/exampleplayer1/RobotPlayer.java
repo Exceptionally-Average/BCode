@@ -46,7 +46,7 @@ public strictfp class RobotPlayer {
                 Direction dir = randomDirection();
 
                 // Randomly attempt to build a gardener in this direction
-                if (rc.canHireGardener(dir) && Math.random() < .01) {
+                if (rc.canHireGardener(dir)) {
                     rc.hireGardener(dir);
                 }
 
@@ -85,11 +85,8 @@ public strictfp class RobotPlayer {
                 // Generate a random direction
                 Direction dir = randomDirection();
 
-                // Randomly attempt to build a soldier or lumberjack in this direction
-/*              if (rc.canBuildRobot(RobotType.SOLDIER, dir) && Math.random() < .01) {
-                    rc.buildRobot(RobotType.SOLDIER, dir);
-                } else */ if (rc.canBuildRobot(RobotType.LUMBERJACK, dir) && Math.random() < .01 && rc.isBuildReady()) {
-                    rc.buildRobot(RobotType.LUMBERJACK, dir);
+                if (rc.canBuildRobot(RobotType.LUMBERJACK, dir) && rc.isBuildReady()) {
+                	rc.buildRobot(RobotType.LUMBERJACK, dir);
                 }
 
                 // Move randomly
@@ -159,6 +156,7 @@ public strictfp class RobotPlayer {
                     rc.strike();
                 } else {
                     // No close robots, so search for robots within sight radius
+                	
                     robots = rc.senseNearbyRobots(-1,enemy);
 
                     // If there is a robot, move towards it
@@ -166,11 +164,18 @@ public strictfp class RobotPlayer {
                         MapLocation myLocation = rc.getLocation();
                         MapLocation enemyLocation = robots[0].getLocation();
                         Direction toEnemy = myLocation.directionTo(enemyLocation);
+                    	rc.broadcast(3,(int)enemyLocation.x);
+                        rc.broadcast(4,(int)enemyLocation.y);
 
                         tryMove(toEnemy);
                     } else {
-                        // Move Randomly
-                        tryMove(randomDirection());
+                        // Read broadcasts and if there is a broadcast of enemy location go to it
+                    	MapLocation myLocation = rc.getLocation();
+                    	int EnemyxPos = rc.readBroadcast(3);
+                        int EnemyyPos = rc.readBroadcast(4);
+                        MapLocation enemyLocation = new MapLocation(EnemyxPos, EnemyyPos);
+                        Direction toEnemy = myLocation.directionTo(enemyLocation);
+                        tryMove(toEnemy);
                     }
                 }
 
