@@ -74,7 +74,6 @@ public strictfp class RobotPlayer {
 
         // The code you want your robot to perform every round should be in this loop
         while (true) {
-
             // Try/catch blocks stop unhandled exceptions, which cause your robot to explode
             try {
 
@@ -168,10 +167,11 @@ public strictfp class RobotPlayer {
 
                         tryMove(toEnemy);
                     }
-                        else if(rc.onTheMap(rc.getLocation().add(startingEnemyDirection,10f)) && rc.canMove(startingEnemyDirection)) {
+                    else if(rc.onTheMap(rc.getLocation().add(startingEnemyDirection)) && rc.canMove(startingEnemyDirection)) {
                         //if you're not close to the end of the map and you can move go towards the enemy spawn
-                        rc.move(startingEnemyDirection);
-                    }else{
+                        Direction startingEnemyDirection2 = rc.getLocation().directionTo(rc.getInitialArchonLocations(rc.getTeam().opponent())[0]);
+                        rc.move(startingEnemyDirection2);
+                    }else {
                         // Move Randomly
                         tryMove(randomDirection());
                     }
