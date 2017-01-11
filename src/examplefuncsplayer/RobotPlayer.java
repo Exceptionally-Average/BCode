@@ -46,7 +46,7 @@ public strictfp class RobotPlayer {
                 Direction dir = randomDirection();
 
                 // Randomly attempt to build a gardener in this direction
-                if (rc.canHireGardener(dir) && Math.random() < .01) {
+                if (rc.canHireGardener(dir) && (Math.random() < .01 || rc.getRoundNum() <= 2)) {
                     rc.hireGardener(dir);
                 }
 
@@ -85,10 +85,12 @@ public strictfp class RobotPlayer {
                 // Generate a random direction
                 Direction dir = randomDirection();
 
+                double randomNr = Math.random();
+
                 // Randomly attempt to build a soldier or lumberjack in this direction
-                if (rc.canBuildRobot(RobotType.SOLDIER, dir) && Math.random() < .01) {
+                if (rc.canBuildRobot(RobotType.SOLDIER, dir) && randomNr < .5 && rc.isBuildReady()) {
                     rc.buildRobot(RobotType.SOLDIER, dir);
-                } else if (rc.canBuildRobot(RobotType.LUMBERJACK, dir) && Math.random() < .01 && rc.isBuildReady()) {
+                } else if (rc.canBuildRobot(RobotType.LUMBERJACK, dir) && randomNr > .5 && rc.isBuildReady()) {
                     rc.buildRobot(RobotType.LUMBERJACK, dir);
                 }
 

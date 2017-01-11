@@ -91,6 +91,7 @@ public strictfp class RobotPlayer {
                 if (rc.canBuildRobot(RobotType.LUMBERJACK, dir) && rc.isBuildReady()) {
                     rc.buildRobot(RobotType.LUMBERJACK, dir);
                 }
+
                 // Move randomly
                 tryMove(randomDirection());
                 clearTemporaryBroadcasts();
@@ -154,9 +155,21 @@ public strictfp class RobotPlayer {
                 // See if there are any enemy robots within striking range (distance 1 from lumberjack's radius)
                 RobotInfo[] robots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius+GameConstants.LUMBERJACK_STRIKE_RADIUS, enemy);
 
+                // See if there are any allied robots within striking range (distance 1 from lumberjack's radius)
+                RobotInfo[] alliedRobots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius+GameConstants.LUMBERJACK_STRIKE_RADIUS, rc.getTeam());
+
                 if(robots.length > 0 && !rc.hasAttacked()) {
-                    // Use strike() to hit all nearby robots!
-                    rc.strike();
+                    if (alliedRobots.length == 0) {
+                        // Use strike() to hit all nearby robots!
+                        rc.strike();
+                    }else {
+                        Direction oppositeDirection = rc.getLocation().directionTo(alliedRobots[0].location).opposite();
+                        if (rc.canMove(oppositeDirection,GameConstants.LUMBERJACK_STRIKE_RADIUS)){
+                            rc.move(oppositeDirection,GameConstants.LUMBERJACK_STRIKE_RADIUS);
+                        }else{
+                            rc.strike();
+                        }
+                    }
                 }else if (rc.senseNearbyRobots(-1, enemy).length > 0){
                     // No close robots, so search for robots within sight radius
                     robots = rc.senseNearbyRobots(-1, enemy);
@@ -282,7 +295,7 @@ public strictfp class RobotPlayer {
         // This is the distance of a line that goes from myLocation and intersects perpendicularly with propagationDirection.
         // This corresponds to the smallest radius circle centered at our location that would intersect with the
         // line that is the path of the bullet.
-        float perpendicularDist = (float)Math.abs(distToRobot * Math.sin(theta)); // soh cah toa :)
+        float perpendicularDist = (float)Math.abs(distToRobot * Math.sin(theta)); // soh cah toa :)x
 
         return (perpendicularDist <= rc.getType().bodyRadius);
     }
@@ -291,7 +304,6 @@ public strictfp class RobotPlayer {
     static void countCurrentRobot() throws GameActionException{
         int i = rc.readBroadcast(2);
         rc.broadcast(2,i + 1);
-        System.out.println("i: " + rc.readBroadcast(2) + " robotnumber:" + rc.getRobotCount());
     }
 
     //clears the broadcasts that are updated each turn
