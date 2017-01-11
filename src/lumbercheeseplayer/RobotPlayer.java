@@ -160,6 +160,11 @@ public strictfp class RobotPlayer {
 
                 if(robots.length > 0 && !rc.hasAttacked()) {
                     if (alliedRobots.length == 0) {
+                        // Check if you can kill the enemy robot
+                        if (RobotType.LUMBERJACK.attackPower >= robots[0].getHealth() && robots[0].getID() == rc.readBroadcast(5));{
+                            clearTemporaryBroadcasts();
+                        }
+
                         // Use strike() to hit all nearby robots!
                         rc.strike();
                     }else {
@@ -180,13 +185,13 @@ public strictfp class RobotPlayer {
                     Direction toEnemy = myLocation.directionTo(enemyLocation);
                     rc.broadcast(3, (int) enemyLocation.x);
                     rc.broadcast(4, (int) enemyLocation.y);
+                    rc.broadcast(5, robots[0].getID());
                     rc.getRobotCount();
                     tryMove(toEnemy);
                 }else if (rc.readBroadcast(3) != 0 && rc.readBroadcast(4) != 0 && !rc.hasMoved()) {
                     MapLocation myLocation = rc.getLocation();
                     int EnemyxPos = rc.readBroadcast(3);
                     int EnemyyPos = rc.readBroadcast(4);
-                    clearTemporaryBroadcasts();
                     MapLocation enemyLocation = new MapLocation(EnemyxPos, EnemyyPos);
                     Direction toEnemy = myLocation.directionTo(enemyLocation);
                     tryMove(toEnemy);
@@ -197,7 +202,7 @@ public strictfp class RobotPlayer {
                     tryMove(randomDirection());
                 }
 
-                clearTemporaryBroadcasts();
+
                 // Clock.yield() makes the robot wait until the next turn, then it will perform this loop again
                 Clock.yield();
 
@@ -312,6 +317,7 @@ public strictfp class RobotPlayer {
             rc.broadcast(2, 0);
             rc.broadcast(3, 0);
             rc.broadcast(4, 0);
+            rc.broadcast(5, 0);
         }
     }
 }
