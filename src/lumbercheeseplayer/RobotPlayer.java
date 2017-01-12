@@ -4,7 +4,8 @@ import battlecode.common.*;
 public strictfp class RobotPlayer {
     static RobotController rc;
     static Direction startingEnemyDirection;
-
+    static MapLocation[] startingEnemyPos = null;
+    static MapLocation[] startingTeamPos = null;
 
     /**
      * run() is the method that is called when a robot is instantiated in the Battlecode world.
@@ -12,12 +13,15 @@ public strictfp class RobotPlayer {
      **/
     @SuppressWarnings("unused")
     public static void run(RobotController rc) throws GameActionException {
-        startingEnemyDirection = rc.getLocation().directionTo(rc.getInitialArchonLocations(rc.getTeam().opponent())[0]);
         // This is the RobotController object. You use it to perform actions from this robot,
         // and to get information on its current status.
         RobotPlayer.rc = rc;
 
-        rc.getInitialArchonLocations(rc.getTeam());
+        if (startingTeamPos == null) {
+            startingEnemyPos = rc.getInitialArchonLocations(rc.getTeam().opponent()).clone();
+            startingTeamPos = rc.getInitialArchonLocations(rc.getTeam()).clone();
+        }
+
         // Here, we've separated the controls into a different method for each RobotType.
         // You can add the missing ones or rewrite this into your own control structure.
         switch (rc.getType()) {
@@ -157,11 +161,13 @@ public strictfp class RobotPlayer {
 
     static void runLumberjack() throws GameActionException {
         Team enemy = rc.getTeam().opponent();
-        int timesStuckInCorner = 0;
-        boolean hasVisitedEnemySpawn = false;
         boolean isGoingSomewhere = false;
+        int spawnCounter = 0;
+        int timesBeenToEnemySpawn = 0;
+
         MapLocation someSpawn = new MapLocation(0,0);
-        Direction toSomeSpawn = startingEnemyDirection;
+        Direction toSomeSpawn;
+        MapLocation[] mapLocations = mergeArrays(startingEnemyPos,startingTeamPos);
 
         // The code you want your robot to perform every round should be in this loop
         while (true) {
@@ -220,29 +226,30 @@ public strictfp class RobotPlayer {
                     toSomeSpawn = rc.getLocation().directionTo(someSpawn);
                     tryMove(toSomeSpawn);
                 }
-                else if(rc.onTheMap(rc.getLocation().add(startingEnemyDirection,RobotType.LUMBERJACK.sensorRadius - 0.1f)) && !hasVisitedEnemySpawn) {
+                else if(rc.onTheMap(rc.getLocation().add(startingEnemyDirection,RobotType.LUMBERJACK.sensorRadius - 0.1f)) && timesBeenToEnemySpawn != startingEnemyPos.length) {
                     //System.out.println("Going to their spawn");
                     //if you're not close to the end of the map and you can move go towards the enemy spawn
+                    startingEnemyDirection = rc.getLocation().directionTo(startingEnemyPos[timesBeenToEnemySpawn]);
                     tryMove(startingEnemyDirection);
                 }else if (isStuckInCorner()) {
-                    timesStuckInCorner += 1;
-                    if (timesStuckInCorner % 2 == 0){
-                        someSpawn = rc.getInitialArchonLocations(enemy)[0];
+                    if (spawnCounter < mapLocations.length / 2){
+                        someSpawn = startingEnemyPos[spawnCounter];
                         toSomeSpawn = rc.getLocation().directionTo(someSpawn);
                     }else {
-                        someSpawn = rc.getInitialArchonLocations(rc.getTeam())[0];
+                        someSpawn = startingTeamPos[spawnCounter];
                         toSomeSpawn = rc.getLocation().directionTo(someSpawn);
                     }
                     isGoingSomewhere = true;
                     tryMove(toSomeSpawn);
+                    spawnCounter += 1;
                 }else{
                         tryMove(randomDirection());
                         //System.out.println("Walking randomly");
                 }
 
-                if (!hasVisitedEnemySpawn) {
-                    if (rc.canSenseLocation(rc.getInitialArchonLocations(rc.getTeam().opponent())[0])) {
-                        hasVisitedEnemySpawn = true;
+                if (timesBeenToEnemySpawn < startingTeamPos.length) {
+                    if (rc.canSenseLocation(startingEnemyPos[timesBeenToEnemySpawn])) {
+                        timesBeenToEnemySpawn += 1;
                     }
                 }
 
@@ -423,5 +430,19 @@ public strictfp class RobotPlayer {
         }else if (spawnA.x != spawnB.x && spawnA.y != spawnB.y){
             System.out.println("Rotational symmetry");
         }
+    }
+
+    static MapLocation[] mergeArrays(MapLocation[] locations1, MapLocation[] locations2){
+        MapLocation[] mergedArray = new MapLocation[locations1.length * 2];
+        int i = 0;
+        for (MapLocation loc : locations1){
+            mergedArray[i] = loc;
+            i++;
+        }
+        for (MapLocation loc : locations2){
+            mergedArray[i] = loc;
+            i++;
+        }
+        return mergedArray;
     }
 }
