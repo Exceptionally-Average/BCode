@@ -231,14 +231,12 @@ public strictfp class RobotPlayer {
                     //if you're not close to the end of the map and you can move go towards the enemy spawn
                     startingEnemyDirection = rc.getLocation().directionTo(startingEnemyPos[timesBeenToEnemySpawn]);
                     tryMove(startingEnemyDirection);
-                }else if (isStuckInCorner()) {
-                    if (spawnCounter < mapLocations.length / 2){
-                        someSpawn = startingEnemyPos[spawnCounter];
-                        toSomeSpawn = rc.getLocation().directionTo(someSpawn);
-                    }else {
-                        someSpawn = startingTeamPos[spawnCounter];
-                        toSomeSpawn = rc.getLocation().directionTo(someSpawn);
+                }else if (isStuckInCorner() && !isGoingSomewhere) {
+                    if (spawnCounter == mapLocations.length){
+                        spawnCounter = 0;
                     }
+                    someSpawn = mapLocations[spawnCounter];
+                    toSomeSpawn = rc.getLocation().directionTo(someSpawn);
                     isGoingSomewhere = true;
                     tryMove(toSomeSpawn);
                     spawnCounter += 1;
