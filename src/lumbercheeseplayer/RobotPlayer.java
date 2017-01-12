@@ -366,44 +366,6 @@ public strictfp class RobotPlayer {
             rc.broadcast(4, 0);
     }
 
-    static Direction findDirectionOutOfCorner() throws GameActionException {
-        Direction[] offTheMapDirections = new Direction[2];
-        int index = 0;
-        int nrDirections = 0;
-        int signednr = 1;
-
-        Direction north = Direction.getNorth();
-        while (index < 360) {
-            Direction direction = north.rotateLeftDegrees(index);
-            if (!rc.onTheMap(rc.getLocation().add(direction, RobotType.LUMBERJACK.sensorRadius - 0.1f))) {
-                offTheMapDirections[nrDirections] = direction.opposite();
-                 nrDirections += 1;
-                if (index >= 180 && signednr > 0) {
-                    signednr = signednr * -1;
-                }
-            }
-
-            //System.out.println("indx " + index + "");
-            index += 90;
-        }
-
-        if (nrDirections == 2) {
-            Direction direction = startingEnemyDirection;
-            if (offTheMapDirections[0].equals(Direction.getEast()) || offTheMapDirections[1].equals(Direction.getEast())) {
-                direction = Direction.getEast().rotateRightDegrees(signednr * 45);
-                System.out.println("EAST!");
-            } else if (offTheMapDirections[0].equals(Direction.getWest()) || offTheMapDirections[1].equals(Direction.getWest())) {
-                direction = Direction.getWest().rotateLeftDegrees(signednr * 45);
-                System.out.println("WEST!");
-            }
-            return direction;
-        }else if (nrDirections == 1) {
-            return randomDirection();
-        }else{
-            return null;
-        }
-    }
-
     static boolean isStuckInCorner() throws GameActionException{
         int index = 0;
         int nrDirections = 0;
