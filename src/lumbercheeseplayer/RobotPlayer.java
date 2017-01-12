@@ -5,6 +5,7 @@ public strictfp class RobotPlayer {
     static RobotController rc;
     static Direction startingEnemyDirection;
 
+
     /**
      * run() is the method that is called when a robot is instantiated in the Battlecode world.
      * If this method returns, the robot dies!
@@ -15,6 +16,7 @@ public strictfp class RobotPlayer {
         // This is the RobotController object. You use it to perform actions from this robot,
         // and to get information on its current status.
         RobotPlayer.rc = rc;
+
         rc.getInitialArchonLocations(rc.getTeam());
         // Here, we've separated the controls into a different method for each RobotType.
         // You can add the missing ones or rewrite this into your own control structure.
@@ -34,15 +36,29 @@ public strictfp class RobotPlayer {
         }
     }
 
+    static boolean metcorner = false;
 
     static void runArchon() throws GameActionException {
-        System.out.println("I'm an archon!");
+        Direction direction = Direction.getNorth();
+        getMapSymmettry();
 
         // The code you want your robot to perform every round should be in this loop
         while (true) {
-            countCurrentRobot();
+
             // Try/catch blocks stop unhandled exceptions, which cause your robot to explode
             try {
+
+                /*
+                Direction outOfCorner = findDirectionOutOfCorner();
+                if (!metcorner && outOfCorner != null){
+                    direction = outOfCorner;
+                    metcorner = true;
+                }
+
+                if (rc.canMove(direction)) {
+                    tryMove(direction);
+                }
+                */
 
                 // Generate a random direction
                 Direction dir = randomDirection();
@@ -72,11 +88,9 @@ public strictfp class RobotPlayer {
     }
 
     static void runGardener() throws GameActionException {
-        System.out.println("I'm a gardener!");
-
         // The code you want your robot to perform every round should be in this loop
         while (true) {
-            countCurrentRobot();
+
             // Try/catch blocks stop unhandled exceptions, which cause your robot to explode
             try {
 
@@ -106,12 +120,11 @@ public strictfp class RobotPlayer {
     }
 
     static void runSoldier() throws GameActionException {
-        System.out.println("I'm an soldier!");
         Team enemy = rc.getTeam().opponent();
 
         // The code you want your robot to perform every round should be in this loop
         while (true) {
-            countCurrentRobot();
+
             // Try/catch blocks stop unhandled exceptions, which cause your robot to explode
             try {
                 MapLocation myLocation = rc.getLocation();
@@ -143,14 +156,20 @@ public strictfp class RobotPlayer {
     }
 
     static void runLumberjack() throws GameActionException {
-        System.out.println("I'm a lumberjack!");
         Team enemy = rc.getTeam().opponent();
+        int timesStuckInCorner = 0;
+        boolean hasVisitedEnemySpawn = false;
+        boolean isGoingSomewhere = false;
+        MapLocation someSpawn = new MapLocation(0,0);
+        Direction toSomeSpawn = startingEnemyDirection;
 
         // The code you want your robot to perform every round should be in this loop
         while (true) {
-            countCurrentRobot();
             // Try/catch blocks stop unhandled exceptions, which cause your robot to explode
             try {
+                if (isStuckInCorner()) {
+                    System.out.println("IM STUCK!");
+                }
 
                 // See if there are any enemy robots within striking range (distance 1 from lumberjack's radius)
                 RobotInfo[] robots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius+GameConstants.LUMBERJACK_STRIKE_RADIUS, enemy);
@@ -161,7 +180,7 @@ public strictfp class RobotPlayer {
                 if(robots.length > 0 && !rc.hasAttacked()) {
                     if (alliedRobots.length == 0) {
                         // Check if you can kill the enemy robot
-                        if (RobotType.LUMBERJACK.attackPower >= robots[0].getHealth() && robots[0].getID() == rc.readBroadcast(5));{
+                        if (RobotType.LUMBERJACK.attackPower >= robots[0].getHealth() && robots[0].getID() == rc.readBroadcast(2));{
                             clearTemporaryBroadcasts();
                         }
 
@@ -183,11 +202,12 @@ public strictfp class RobotPlayer {
                     MapLocation myLocation = rc.getLocation();
                     MapLocation enemyLocation = robots[0].getLocation();
                     Direction toEnemy = myLocation.directionTo(enemyLocation);
+                    rc.broadcast(2, robots[0].getID());
                     rc.broadcast(3, (int) enemyLocation.x);
                     rc.broadcast(4, (int) enemyLocation.y);
-                    rc.broadcast(5, robots[0].getID());
                     rc.getRobotCount();
                     tryMove(toEnemy);
+                    //System.out.println("GOING TO FUCK SHIT UP");
                 }else if (rc.readBroadcast(3) != 0 && rc.readBroadcast(4) != 0 && !rc.hasMoved()) {
                     MapLocation myLocation = rc.getLocation();
                     int EnemyxPos = rc.readBroadcast(3);
@@ -195,13 +215,40 @@ public strictfp class RobotPlayer {
                     MapLocation enemyLocation = new MapLocation(EnemyxPos, EnemyyPos);
                     Direction toEnemy = myLocation.directionTo(enemyLocation);
                     tryMove(toEnemy);
-                }else if(rc.onTheMap(rc.getLocation().add(startingEnemyDirection,RobotType.LUMBERJACK.sensorRadius - 0.1f)) && rc.canMove(startingEnemyDirection)) {
+                    //System.out.println("Going to the broadcast");
+                }else if (isGoingSomewhere){
+                    toSomeSpawn = rc.getLocation().directionTo(someSpawn);
+                    tryMove(toSomeSpawn);
+                }
+                else if(rc.onTheMap(rc.getLocation().add(startingEnemyDirection,RobotType.LUMBERJACK.sensorRadius - 0.1f)) && !hasVisitedEnemySpawn) {
+                    //System.out.println("Going to their spawn");
                     //if you're not close to the end of the map and you can move go towards the enemy spawn
-                    rc.move(startingEnemyDirection);
+                    tryMove(startingEnemyDirection);
+                }else if (isStuckInCorner()) {
+                    timesStuckInCorner += 1;
+                    if (timesStuckInCorner % 2 == 0){
+                        someSpawn = rc.getInitialArchonLocations(enemy)[0];
+                        toSomeSpawn = rc.getLocation().directionTo(someSpawn);
+                    }else {
+                        someSpawn = rc.getInitialArchonLocations(rc.getTeam())[0];
+                        toSomeSpawn = rc.getLocation().directionTo(someSpawn);
+                    }
+                    isGoingSomewhere = true;
+                    tryMove(toSomeSpawn);
                 }else{
-                    tryMove(randomDirection());
+                        tryMove(randomDirection());
+                        //System.out.println("Walking randomly");
                 }
 
+                if (!hasVisitedEnemySpawn) {
+                    if (rc.canSenseLocation(rc.getInitialArchonLocations(rc.getTeam().opponent())[0])) {
+                        hasVisitedEnemySpawn = true;
+                    }
+                }
+
+                if (rc.canSenseLocation(someSpawn)) {
+                    isGoingSomewhere = false;
+                }
 
                 // Clock.yield() makes the robot wait until the next turn, then it will perform this loop again
                 Clock.yield();
@@ -305,19 +352,76 @@ public strictfp class RobotPlayer {
         return (perpendicularDist <= rc.getType().bodyRadius);
     }
 
-    //It is used to find the last robot of the turn, it gets incremented each time a robot gets his turn and is reset when the turn is over (saved as a broadcast)
-    static void countCurrentRobot() throws GameActionException{
-        int i = rc.readBroadcast(2);
-        rc.broadcast(2,i + 1);
-    }
-
     //clears the broadcasts that are updated each turn
     static void clearTemporaryBroadcasts() throws GameActionException{
-        if (rc.readBroadcast(2) == rc.getRobotCount()) {
             rc.broadcast(2, 0);
             rc.broadcast(3, 0);
             rc.broadcast(4, 0);
-            rc.broadcast(5, 0);
+    }
+
+    static Direction findDirectionOutOfCorner() throws GameActionException {
+        Direction[] offTheMapDirections = new Direction[2];
+        int index = 0;
+        int nrDirections = 0;
+        int signednr = 1;
+
+        Direction north = Direction.getNorth();
+        while (index < 360) {
+            Direction direction = north.rotateLeftDegrees(index);
+            if (!rc.onTheMap(rc.getLocation().add(direction, RobotType.LUMBERJACK.sensorRadius - 0.1f))) {
+                offTheMapDirections[nrDirections] = direction.opposite();
+                 nrDirections += 1;
+                if (index >= 180 && signednr > 0) {
+                    signednr = signednr * -1;
+                }
+            }
+
+            //System.out.println("indx " + index + "");
+            index += 90;
+        }
+
+        if (nrDirections == 2) {
+            Direction direction = startingEnemyDirection;
+            if (offTheMapDirections[0].equals(Direction.getEast()) || offTheMapDirections[1].equals(Direction.getEast())) {
+                direction = Direction.getEast().rotateRightDegrees(signednr * 45);
+                System.out.println("EAST!");
+            } else if (offTheMapDirections[0].equals(Direction.getWest()) || offTheMapDirections[1].equals(Direction.getWest())) {
+                direction = Direction.getWest().rotateLeftDegrees(signednr * 45);
+                System.out.println("WEST!");
+            }
+            return direction;
+        }else if (nrDirections == 1) {
+            return randomDirection();
+        }else{
+            return null;
+        }
+    }
+
+    static boolean isStuckInCorner() throws GameActionException{
+        int index = 0;
+        int nrDirections = 0;
+        Direction north = Direction.getNorth();
+        while (index < 360) {
+            Direction direction = north.rotateLeftDegrees(index);
+            if (!rc.onTheMap(rc.getLocation().add(direction, RobotType.LUMBERJACK.sensorRadius - 0.1f))) {
+                nrDirections += 1;
+            }
+
+            //System.out.println("indx " + index + "");
+            index += 90;
+        }
+        return nrDirections >= 2;
+    }
+
+    static void getMapSymmettry(){
+        MapLocation spawnA = rc.getInitialArchonLocations(Team.A)[0];
+        MapLocation spawnB = rc.getInitialArchonLocations(Team.B)[0];
+        if (spawnB.y == spawnA.y){
+            System.out.println("Vertical symmetry");
+        }else if (spawnB.x == spawnA.x){
+            System.out.println("Horizontal symmetry");
+        }else if (spawnA.x != spawnB.x && spawnA.y != spawnB.y){
+            System.out.println("Rotational symmetry");
         }
     }
 }
