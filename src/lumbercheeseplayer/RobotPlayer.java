@@ -1,5 +1,6 @@
 package lumbercheeseplayer;
 import battlecode.common.*;
+import sun.reflect.generics.tree.Tree;
 
 public strictfp class RobotPlayer {
     static RobotController rc;
@@ -58,7 +59,6 @@ public strictfp class RobotPlayer {
                     direction = outOfCorner;
                     metcorner = true;
                 }
-
                 if (rc.canMove(direction)) {
                     tryMove(direction);
                 }
@@ -267,21 +267,26 @@ public strictfp class RobotPlayer {
                         Direction toEnemy = myLocation.directionTo(enemyLocation);
 
                         rc.getRobotCount();
-                        tryMove(toEnemy);
+                        //tryMove(toEnemy);
+                        tryBug(myLocation, enemyLocation);
 
                         rc.broadcast(squadronNr, encodeMessage(Math.round(target.getLocation().x), Math.round(target.getLocation().y)));
                         rc.broadcast(squadronNr + 1,target.getID());
                         //System.out.println("GOING TO FUCK SHIT UP");
                     } else if (isGoingSomewhere) {
                         toSomeSpawn = rc.getLocation().directionTo(someSpawn);
-                        tryMove(toSomeSpawn);
+                        //tryMove(toSomeSpawn);
+                        MapLocation myLocation = rc.getLocation();
+                        tryBug(myLocation, someSpawn);
                         rc.broadcast(squadronNr, encodeMessage(Math.round(rc.getLocation().x), Math.round(rc.getLocation().y)));
                         rc.broadcast(squadronNr + 1, 0);
                     } else if (rc.onTheMap(rc.getLocation().add(startingEnemyDirection, RobotType.LUMBERJACK.sensorRadius - 0.1f)) && timesBeenToEnemySpawn != startingEnemyPos.length) {
                         //System.out.println("Going to their spawn");
                         //if you're not close to the end of the map and you can move go towards the enemy spawn
                         startingEnemyDirection = rc.getLocation().directionTo(startingEnemyPos[timesBeenToEnemySpawn]);
-                        tryMove(startingEnemyDirection);
+                        //tryMove(startingEnemyDirection);
+                        MapLocation myLocation = rc.getLocation();
+                        tryBug(myLocation, startingEnemyPos[0]);
                         int encodedmessage = encodeMessage(Math.round(rc.getLocation().x), Math.round(rc.getLocation().y));
                         rc.broadcast(squadronNr + 1, 0);
                         rc.broadcast(squadronNr, encodedmessage);
@@ -295,7 +300,9 @@ public strictfp class RobotPlayer {
                         someSpawn = mapLocations[spawnCounter];
                         toSomeSpawn = rc.getLocation().directionTo(someSpawn);
                         isGoingSomewhere = true;
-                        tryMove(toSomeSpawn);
+                        //tryMove(toSomeSpawn);
+                        MapLocation myLocation = rc.getLocation();
+                        tryBug(myLocation, someSpawn);
                         spawnCounter += 1;
                         rc.broadcast(squadronNr, encodeMessage(Math.round(rc.getLocation().x), Math.round(rc.getLocation().y)));
                         rc.broadcast(squadronNr + 1, 0);
@@ -344,7 +351,9 @@ public strictfp class RobotPlayer {
                             } else {
                                 location = offset1;
                             }
-                            tryMove(rc.getLocation().directionTo(location));
+                            //tryMove(rc.getLocation().directionTo(location));
+                            MapLocation myLocation = rc.getLocation();
+                            tryBug(myLocation, location);
                         } else {
                             // See if there are any enemy robots within striking range (distance 1 from lumberjack's radius)
                             RobotInfo[] robots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, rc.getTeam().opponent());
@@ -382,7 +391,9 @@ public strictfp class RobotPlayer {
                                     }
                                 }
                             } else if (target == null) {
-                                tryMove(rc.getLocation().directionTo(location));
+                                //tryMove(rc.getLocation().directionTo(location));
+                                MapLocation myLocation = rc.getLocation();
+                                tryBug(myLocation, location);
                             }
                         }
                     }
@@ -516,6 +527,34 @@ public strictfp class RobotPlayer {
         }
     }
 
+    public static void tryBug(MapLocation currentLoc, MapLocation goal) throws GameActionException {
+
+        int rageMeter = 0;
+        Direction forward = currentLoc.directionTo(goal);
+        Direction right = currentLoc.directionTo(goal).rotateRightDegrees(90);
+        Direction left = currentLoc.directionTo(goal).rotateLeftDegrees(90);
+        TreeInfo[] nearbyTrees = rc.senseNearbyTrees(RobotType.LUMBERJACK.sensorRadius);
+
+        if (rc.canMove(goal)) {      //can move to goal and he's not angry
+            rc.move(goal);
+            rageMeter =- 4;
+        } else if (!rc.canMove(goal)  && rageMeter <= 100) {       //cant move to goal...
+            if (rc.canMove(right) && !rc.canMove(left)) {         //if he cant move left but he can move right
+                rc.move(right);                                    //move right of goal
+            } else if (rc.canMove(left) && !rc.canMove(right)) {       //if he cant move right but he can move left
+                rc.move(left);                                      //move left of goal
+            }
+            rageMeter =+ 2;                                         //make him angry that he's not getting to goal
+        } else if (!rc.canMove(goal)  && rageMeter >= 100){
+            if(nearbyTrees.length > 3){
+                MapLocation closestTree = new MapLocation(nearbyTrees[0].getLocation().x, nearbyTrees[0].getLocation().y);
+                if(rc.canChop(closestTree)){
+                    rc.chop(closestTree);
+                }
+            }
+        }
+    }
+
     static MapLocation[] mergeArrays(MapLocation[] locations1, MapLocation[] locations2){
         MapLocation[] mergedArray = new MapLocation[locations1.length * 2];
         int i = 0;
@@ -553,7 +592,7 @@ public strictfp class RobotPlayer {
     }
 
     static int[] decodedMessage(int msg){
-     int[] messageParts = new int[2];
+        int[] messageParts = new int[2];
         messageParts[1] = msg % 1000;
         msg = msg / 1000;
         messageParts[0] = msg;
