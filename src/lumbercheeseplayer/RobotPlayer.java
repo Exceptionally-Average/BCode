@@ -4,7 +4,9 @@ import sun.reflect.generics.tree.Tree;
 
 public strictfp class RobotPlayer {
     static RobotController rc;
+    static MapLocation myLocation;
     static Direction startingEnemyDirection;
+    static Direction wasGoing = null;
     static MapLocation[] startingEnemyPos = null;
     static MapLocation[] startingTeamPos = null;
     static int squadronNr;
@@ -44,40 +46,25 @@ public strictfp class RobotPlayer {
     static boolean metcorner = false;
 
     static void runArchon() throws GameActionException {
-        Direction direction = Direction.getNorth();
         getMapSymmettry();
+        MapLocation loc = rc.getInitialArchonLocations(rc.getTeam().opponent())[0];
 
         // The code you want your robot to perform every round should be in this loop
         while (true) {
 
             // Try/catch blocks stop unhandled exceptions, which cause your robot to explode
             try {
-
-                /*
-                Direction outOfCorner = findDirectionOutOfCorner();
-                if (!metcorner && outOfCorner != null){
-                    direction = outOfCorner;
-                    metcorner = true;
-                }
-                if (rc.canMove(direction)) {
-                    tryMove(direction);
-                }
-                */
-
+                myLocation = rc.getLocation();
                 // Generate a random direction
                 Direction dir = randomDirection();
 
                 // Randomly attempt to build a gardener in this direction
-                if (rc.canHireGardener(dir) && (rc.getRoundNum() <= 2 || rc.getTeamBullets() > RobotType.GARDENER.bulletCost + 10)) {
+                if (rc.canHireGardener(dir) && (rc.getRoundNum() <= 2 || rc.getTeamBullets() > RobotType.GARDENER.bulletCost + 50)) {
                     rc.hireGardener(dir);
                 }
 
                 // Move randomly
-                tryMove(randomDirection());
-
-                // Broadcast archon's location for other robots on the team to know
-                MapLocation myLocation = rc.getLocation();
-
+                pathTo(dir);
 
                 // Clock.yield() makes the robot wait until the next turn, then it will perform this loop again
                 Clock.yield();
@@ -101,6 +88,7 @@ public strictfp class RobotPlayer {
 
             // Try/catch blocks stop unhandled exceptions, which cause your robot to explode
             try {
+                myLocation = rc.getLocation();
 
                 // Listen for home archon's location
                 //int xPos = rc.readBroadcast(0);
@@ -110,7 +98,7 @@ public strictfp class RobotPlayer {
                 // Generate a random direction
                 Direction dir = randomDirection();
 
-                if (squadronMembersBuilt == 6){
+                if (squadronMembersBuilt == 3){
                     squadronMembersBuilt = 0;
                 }
 
@@ -121,7 +109,7 @@ public strictfp class RobotPlayer {
 
                 if (squadronMembersBuilt == 0) {
                     // Move randomly
-                    tryMove(randomDirection());
+                   pathTo(randomDirection());
                 }
                 // Clock.yield() makes the robot wait until the next turn, then it will perform this loop again
                 Clock.yield();
@@ -141,7 +129,7 @@ public strictfp class RobotPlayer {
 
             // Try/catch blocks stop unhandled exceptions, which cause your robot to explode
             try {
-                MapLocation myLocation = rc.getLocation();
+                myLocation = rc.getLocation();
 
                 // See if there are any nearby enemy robots
                 RobotInfo[] robots = rc.senseNearbyRobots(-1, enemy);
@@ -156,7 +144,7 @@ public strictfp class RobotPlayer {
                 }
 
                 // Move randomly
-                tryMove(randomDirection());
+                     pathTo(randomDirection());
 
 
                 // Clock.yield() makes the robot wait until the next turn, then it will perform this loop again
@@ -200,7 +188,7 @@ public strictfp class RobotPlayer {
         while (true) {
             // Try/catch blocks stop unhandled exceptions, which cause your robot to explode
             try {
-
+                myLocation = rc.getLocation();
                 // If there aren't enough members to form a squadron wait
                 if (rc.readBroadcast(squadronNr) >= 2) {
                     // See if there are any enemy robots within striking  range (distance 1 from lumberjack's radius)
@@ -237,9 +225,9 @@ public strictfp class RobotPlayer {
                             rc.broadcast(squadronNr, encodeMessage(Math.round(target.getLocation().x), Math.round(target.getLocation().y)));
                             rc.broadcast(squadronNr + 1, robots[0].getID());
                         } else {
-                            Direction oppositeDirection = rc.getLocation().directionTo(alliedRobots[0].location).opposite();
+                            Direction oppositeDirection = myLocation.directionTo(alliedRobots[0].getLocation()).opposite();
                             if (rc.canMove(oppositeDirection, GameConstants.LUMBERJACK_STRIKE_RADIUS)) {
-                                rc.move(oppositeDirection, GameConstants.LUMBERJACK_STRIKE_RADIUS);
+                                 rc.move(oppositeDirection, GameConstants.LUMBERJACK_STRIKE_RADIUS);
                             } else {
                                 rc.strike();
                             }
@@ -262,53 +250,45 @@ public strictfp class RobotPlayer {
                         }
 
                         // If there is a robot, move towards it
-                        MapLocation myLocation = rc.getLocation();
+
                         MapLocation enemyLocation = target.getLocation();
                         Direction toEnemy = myLocation.directionTo(enemyLocation);
 
-                        rc.getRobotCount();
-                        //tryMove(toEnemy);
-                        tryBug(myLocation, enemyLocation);
+                        pathTo(toEnemy);
 
                         rc.broadcast(squadronNr, encodeMessage(Math.round(target.getLocation().x), Math.round(target.getLocation().y)));
                         rc.broadcast(squadronNr + 1,target.getID());
                         //System.out.println("GOING TO FUCK SHIT UP");
                     } else if (isGoingSomewhere) {
-                        toSomeSpawn = rc.getLocation().directionTo(someSpawn);
-                        //tryMove(toSomeSpawn);
-                        MapLocation myLocation = rc.getLocation();
-                        tryBug(myLocation, someSpawn);
-                        rc.broadcast(squadronNr, encodeMessage(Math.round(rc.getLocation().x), Math.round(rc.getLocation().y)));
+                        toSomeSpawn = myLocation.directionTo(someSpawn);
+
+                        pathTo(toSomeSpawn);
+                        rc.broadcast(squadronNr, encodeMessage(Math.round(myLocation.x), Math.round(myLocation.y)));
                         rc.broadcast(squadronNr + 1, 0);
                     } else if (rc.onTheMap(rc.getLocation().add(startingEnemyDirection, RobotType.LUMBERJACK.sensorRadius - 0.1f)) && timesBeenToEnemySpawn != startingEnemyPos.length) {
                         //System.out.println("Going to their spawn");
                         //if you're not close to the end of the map and you can move go towards the enemy spawn
-                        startingEnemyDirection = rc.getLocation().directionTo(startingEnemyPos[timesBeenToEnemySpawn]);
-                        //tryMove(startingEnemyDirection);
-                        MapLocation myLocation = rc.getLocation();
-                        tryBug(myLocation, startingEnemyPos[0]);
-                        int encodedmessage = encodeMessage(Math.round(rc.getLocation().x), Math.round(rc.getLocation().y));
+                        startingEnemyDirection = myLocation.directionTo(startingEnemyPos[timesBeenToEnemySpawn]);
+                        pathTo(startingEnemyDirection);
+                        int encodedmessage = encodeMessage(Math.round(myLocation.x), Math.round(myLocation.y));
                         rc.broadcast(squadronNr + 1, 0);
                         rc.broadcast(squadronNr, encodedmessage);
-                        System.out.println("X: " + Math.round(rc.getLocation().x) + " y: " + Math.round(rc.getLocation().y));
-                        System.out.println("ID: " + rc.readBroadcast(squadronNr + 1));
-                        System.out.println(encodedmessage);
                     } else if (isStuckInCorner() && !isGoingSomewhere) {
                         if (spawnCounter == mapLocations.length) {
                             spawnCounter = 0;
                         }
                         someSpawn = mapLocations[spawnCounter];
-                        toSomeSpawn = rc.getLocation().directionTo(someSpawn);
+                        toSomeSpawn = myLocation.directionTo(someSpawn);
                         isGoingSomewhere = true;
                         //tryMove(toSomeSpawn);
-                        MapLocation myLocation = rc.getLocation();
-                        tryBug(myLocation, someSpawn);
+                        //tryBug(toSomeSpawn);
+                        pathTo(toSomeSpawn);
                         spawnCounter += 1;
-                        rc.broadcast(squadronNr, encodeMessage(Math.round(rc.getLocation().x), Math.round(rc.getLocation().y)));
+                        rc.broadcast(squadronNr, encodeMessage(Math.round(myLocation.x), Math.round(myLocation.y)));
                         rc.broadcast(squadronNr + 1, 0);
                     } else {
                         tryMove(randomDirection());
-                        rc.broadcast(squadronNr, encodeMessage(Math.round(rc.getLocation().x), Math.round(rc.getLocation().y)));
+                        rc.broadcast(squadronNr, encodeMessage(Math.round(myLocation.x), Math.round(myLocation.y)));
                         rc.broadcast(squadronNr + 1, 0);
                         //System.out.println("Walking randomly");
                     }
@@ -336,6 +316,7 @@ public strictfp class RobotPlayer {
     static void squadronMemberMove() throws GameActionException{
         while (true) {
             try {
+                myLocation = rc.getLocation();
                 int broadcast = rc.readBroadcast(squadronNr);
                 if (rc.readBroadcast(squadronNr) != 99999) {
                     if (rc.readBroadcast(squadronNr) > 2) {
@@ -343,17 +324,15 @@ public strictfp class RobotPlayer {
                         int broadcastedID = rc.readBroadcast(squadronNr + 1);
                         MapLocation location = new MapLocation(decodedBroadcast[0], decodedBroadcast[1]);
                         if (broadcastedID == 0) {
-                            Direction toTarget = rc.getLocation().directionTo(location);
+                            Direction toTarget = myLocation.directionTo(location);
                             MapLocation offset1 = location.add(toTarget.rotateLeftDegrees(90), GameConstants.LUMBERJACK_STRIKE_RADIUS);
                             MapLocation offset2 = location.add(toTarget.rotateRightDegrees(90), GameConstants.LUMBERJACK_STRIKE_RADIUS);
-                            if (rc.getLocation().distanceTo(offset1) > rc.getLocation().distanceTo(offset2)) {
+                            if (myLocation.distanceTo(offset1) > myLocation.distanceTo(offset2)) {
                                 location = offset2;
                             } else {
                                 location = offset1;
                             }
-                            //tryMove(rc.getLocation().directionTo(location));
-                            MapLocation myLocation = rc.getLocation();
-                            tryBug(myLocation, location);
+                            pathTo(location);
                         } else {
                             // See if there are any enemy robots within striking range (distance 1 from lumberjack's radius)
                             RobotInfo[] robots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, rc.getTeam().opponent());
@@ -365,35 +344,36 @@ public strictfp class RobotPlayer {
                                 }
                             }
 
-
-                            Direction toTarget = rc.getLocation().directionTo(location);
-                            MapLocation offset1 = location.add(toTarget.rotateLeftDegrees(90));
-                            MapLocation offset2 = location.add(toTarget.rotateRightDegrees(90));
-                            if (rc.getLocation().distanceTo(offset1) > rc.getLocation().distanceTo(offset2)) {
-                                location = offset2;
-                            } else {
-                                location = offset1;
-                            }
-
                             // See if there are any allied robots within striking range (distance 1 from lumberjack's radius)
                             RobotInfo[] alliedRobots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, rc.getTeam());
 
                             if (target != null && !rc.hasAttacked()) {
+                                Direction toTarget = myLocation.directionTo(location);
+                                MapLocation offset1 = location.add(toTarget.rotateLeftDegrees(90));
+                                MapLocation offset2 = location.add(toTarget.rotateRightDegrees(90));
+                                if (myLocation.distanceTo(offset1) > myLocation.distanceTo(offset2)) {
+                                    location = offset2;
+                                } else {
+                                    location = offset1;
+                                }
+
                                 if (alliedRobots.length == 0) {
                                     // Use strike() to hit all nearby robots!
                                     rc.strike();
                                 } else {
-                                    Direction oppositeDirection = rc.getLocation().directionTo(alliedRobots[0].location).opposite();
-                                    if (rc.canMove(oppositeDirection, GameConstants.LUMBERJACK_STRIKE_RADIUS)) {
-                                        rc.move(oppositeDirection, GameConstants.LUMBERJACK_STRIKE_RADIUS);
+                                    Direction oppositeDirection = myLocation.directionTo(alliedRobots[0].location).opposite();
+                                    if (rc.canMove(oppositeDirection, GameConstants.LUMBERJACK_STRIKE_RADIUS -.1f)) {
+                                        rc.move(oppositeDirection, GameConstants.LUMBERJACK_STRIKE_RADIUS - .1f);
                                     } else {
-                                        rc.strike();
+                                        if (alliedRobots.length == 1) {
+                                            rc.strike();
+                                        }
                                     }
                                 }
                             } else if (target == null) {
                                 //tryMove(rc.getLocation().directionTo(location));
-                                MapLocation myLocation = rc.getLocation();
-                                tryBug(myLocation, location);
+                                //tryBug(myLocation.directionTo(location));
+                                pathTo(location);
                             }
                         }
                     }
@@ -474,8 +454,6 @@ public strictfp class RobotPlayer {
      * @return True if the line of the bullet's path intersects with this robot's current position.
      */
     static boolean willCollideWithMe(BulletInfo bullet) {
-        MapLocation myLocation = rc.getLocation();
-
         // Get relevant bullet information
         Direction propagationDirection = bullet.dir;
         MapLocation bulletLocation = bullet.location;
@@ -515,44 +493,167 @@ public strictfp class RobotPlayer {
         return nrDirections >= 2;
     }
 
-    static void getMapSymmettry(){
+    static void getMapSymmettry() {
         MapLocation spawnA = rc.getInitialArchonLocations(Team.A)[0];
         MapLocation spawnB = rc.getInitialArchonLocations(Team.B)[0];
-        if (spawnB.y == spawnA.y){
+        if (spawnB.y == spawnA.y) {
             System.out.println("Vertical symmetry");
-        }else if (spawnB.x == spawnA.x){
+        } else if (spawnB.x == spawnA.x) {
             System.out.println("Horizontal symmetry");
-        }else if (spawnA.x != spawnB.x && spawnA.y != spawnB.y){
+        } else if (spawnA.x != spawnB.x && spawnA.y != spawnB.y) {
             System.out.println("Rotational symmetry");
         }
     }
 
-    public static void tryBug(MapLocation currentLoc, MapLocation goal) throws GameActionException {
+     //Overloaded the pathTo method to accept a direction parameter
+     static void pathTo(Direction direction) throws GameActionException{
+         MapLocation location = myLocation.add(direction);
+         pathTo(location);
+     }
 
+     //Overloaded the pathTo method to accept a direction parameter and a distance parameter
+     static void pathTo(Direction direction, float distance) throws GameActionException{
+         MapLocation location = myLocation.add(direction,distance);
+         pathTo(location);
+     }
+
+     //Paths to the given MapLocation
+     static void pathTo(MapLocation goalLocation) throws GameActionException {
         int rageMeter = 0;
-        Direction forward = currentLoc.directionTo(goal);
-        Direction right = currentLoc.directionTo(goal).rotateRightDegrees(90);
-        Direction left = currentLoc.directionTo(goal).rotateLeftDegrees(90);
+        //Registers current map location as previous map location
+        MapLocation prevLocation = myLocation;
+
+        //Makes a direction from current position to goal location
+        Direction goal = myLocation.directionTo(goalLocation);
+
         TreeInfo[] nearbyTrees = rc.senseNearbyTrees(RobotType.LUMBERJACK.sensorRadius);
 
-        if (rc.canMove(goal)) {      //can move to goal and he's not angry
+        //If there is no previous moving direction make it the same as goal direction
+        if (wasGoing == null){
+            wasGoing = goal;
+        }
+
+        //If it can move to goal direction do so
+        if (rc.canMove(goal)){
             rc.move(goal);
-            rageMeter =- 4;
-        } else if (!rc.canMove(goal)  && rageMeter <= 100) {       //cant move to goal...
-            if (rc.canMove(right) && !rc.canMove(left)) {         //if he cant move left but he can move right
-                rc.move(right);                                    //move right of goal
-            } else if (rc.canMove(left) && !rc.canMove(right)) {       //if he cant move right but he can move left
-                rc.move(left);                                      //move left of goal
-            }
-            rageMeter =+ 2;                                         //make him angry that he's not getting to goal
-        } else if (!rc.canMove(goal)  && rageMeter >= 100){
-            if(nearbyTrees.length > 3){
-                MapLocation closestTree = new MapLocation(nearbyTrees[0].getLocation().x, nearbyTrees[0].getLocation().y);
-                if(rc.canChop(closestTree)){
-                    rc.chop(closestTree);
+            myLocation = rc.getLocation();
+            rageMeter -= 4;
+            System.out.println("Can Move");
+        }else{
+            //If it cannot check the rage meter
+            if (rageMeter < 100){
+                //If it can go at the same direction that it was going before continue
+                if (rc.canMove(wasGoing)){
+                    rc.move(wasGoing);
+
+                    //Update location
+                    myLocation = rc.getLocation();
+                }else{
+                    //If it cant check for a similar angle of previous direction if it can move to that do so
+                    Direction closestDirection = checkBestAngle(goal,goalLocation);
+                    if (closestDirection != null){
+                        rc.move(closestDirection);
+                        myLocation = rc.getLocation();
+                    }else{
+                        //If it cant get very angry and say something mean in the console
+                       // System.out.println("IMMA CHOP NOW");
+                    }
+                }
+            }else{
+                //This aint my code so idk
+                if (nearbyTrees.length > 3) {
+                    MapLocation closestTree = new MapLocation(nearbyTrees[0].getLocation().x, nearbyTrees[0].getLocation().y);
+                    if (rc.canChop(closestTree)) {
+                        rc.chop(closestTree);
+                    }
                 }
             }
         }
+
+        //If it actually moved this turn update the previous direction with the direction that it moved
+        if (prevLocation != rc.getLocation()) {
+            wasGoing = prevLocation.directionTo(myLocation);
+        }
+    }
+
+    /**
+        It checks for the best angle to path to.
+        @param goal The goal direction where we want to go
+        @param goalLocation The goal location where we want to go
+        @return Returns the angle that seems better
+     **/
+
+    static Direction checkBestAngle(Direction goal,MapLocation goalLocation) throws GameActionException{
+        //The angle that is going to be returned
+        Direction bestAngle;
+
+        //Initial space between the previous direction that it was going and the goal direction
+        float initDistance = wasGoing.degreesBetween(goal);
+        int highPriority = 0;
+        int medPriority = 0;
+
+        //Checks If there is space aka the goal direction wasnt the same as the previous direction
+        if (initDistance > 0) {
+            //Measures the distance between the directions when you rotate the previous direction left by 1 degree
+            //And checks if the space gets increased or decreased, this is used to see if the previous direction is going
+            //more left or more right and prioritize an angle that goes similar to a similar direction with the previous one
+            float secondDistance = wasGoing.rotateLeftDegrees(1).degreesBetween(goal);
+            if(initDistance > secondDistance){
+                highPriority = 1; //1 = left
+                medPriority = 2;  //2 = right
+            }else if (initDistance < secondDistance) {
+                highPriority = 2;
+                medPriority = 1;
+            }
+        }else{
+            System.out.println("same");
+        }
+
+        // Finds similar angles to the highPriority side left/right if it cant move to the high priority
+        // check the medium priority, if it can't move to that either return null
+        bestAngle = findSimilarAngles(wasGoing,highPriority);
+        if (bestAngle == null) {
+            bestAngle = findSimilarAngles(wasGoing, medPriority);
+        }
+        return bestAngle;
+    }
+
+    /**
+     * Is used to the most similar angle to the direction given that the robot can go to according to the priority of the sides
+     *
+     * @param direction the direction
+     * @param leftRight whether to check only for angles left or only for angles to the right
+     * @return Direction if it finds one or null if the robot can't move
+     */
+    static Direction findSimilarAngles(Direction direction,int leftRight){
+        int i = 0;
+        double random = Math.random();
+
+        // Iterates to every angle from 0 degrees to 100 degrees to the left/right by 10 degrees depending on the leftRight param
+        // Returns a direction if the robot can move there
+        while (i < 100){
+            switch (leftRight){
+                case 0:
+                    if (random > .5){
+                        direction = direction.rotateLeftDegrees(i);
+                    }else{
+                        direction = direction.rotateRightDegrees(i);
+                    }
+                case 1:
+                    direction = direction.rotateLeftDegrees(i);
+                    System.out.println(direction);
+                    break;
+                case 2:
+                    direction = direction.rotateRightDegrees(i);
+                    System.out.println(direction);
+                    break;
+            }
+            if (rc.canMove(direction)){
+                return direction;
+            }
+            i += 10;
+        }
+        return null;
     }
 
     static MapLocation[] mergeArrays(MapLocation[] locations1, MapLocation[] locations2){
@@ -598,5 +699,4 @@ public strictfp class RobotPlayer {
         messageParts[0] = msg;
         return messageParts;
     }
-
 }
