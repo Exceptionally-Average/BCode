@@ -3,6 +3,12 @@ import battlecode.common.*;
 import sun.reflect.generics.tree.Tree;
 
 public strictfp class RobotPlayer {
+    public static final int SQUADRON_MOVE_CODE = 99996;
+    static final int COMMANDER_SWITCH_CODE = 99999;
+    static final int TARGET_KILLED_CODE = 99997;
+    static final int MAX_SQUADRON_MEMBERS = 2;
+    static final int MAX_RAGE = 30;
+    static int rageMeter;
     static RobotController rc;
     static MapLocation myLocation;
     static Direction startingEnemyDirection;
@@ -10,6 +16,9 @@ public strictfp class RobotPlayer {
     static MapLocation[] startingEnemyPos = null;
     static MapLocation[] startingTeamPos = null;
     static int squadronNr;
+    static Team enemyteam;
+    static Direction directionToEnemy = null;
+
     /**
      * run() is the method that is called when a robot is instantiated in the Battlecode world.
      * If this method returns, the robot dies!
@@ -19,7 +28,7 @@ public strictfp class RobotPlayer {
         // This is the RobotController object. You use it to perform actions from this robot,
         // and to get information on its current status.
         RobotPlayer.rc = rc;
-
+        enemyteam = rc.getTeam().opponent();
         if (startingTeamPos == null) {
             startingEnemyPos = rc.getInitialArchonLocations(rc.getTeam().opponent()).clone();
             startingTeamPos = rc.getInitialArchonLocations(rc.getTeam()).clone();
@@ -59,7 +68,7 @@ public strictfp class RobotPlayer {
                 Direction dir = randomDirection();
 
                 // Randomly attempt to build a gardener in this direction
-                if (rc.canHireGardener(dir) && (rc.getRoundNum() <= 2 || rc.getTeamBullets() > RobotType.GARDENER.bulletCost + 50)) {
+                if (rc.canHireGardener(dir) && (rc.getRoundNum() <= 2 || rc.getTeamBullets() < RobotType.GARDENER.bulletCost)) {
                     rc.hireGardener(dir);
                 }
 
@@ -68,7 +77,6 @@ public strictfp class RobotPlayer {
 
                 // Clock.yield() makes the robot wait until the next turn, then it will perform this loop again
                 Clock.yield();
-
             } catch (Exception e) {
                 System.out.println("Archon Exception");
                 e.printStackTrace();
@@ -77,7 +85,7 @@ public strictfp class RobotPlayer {
     }
 
     static void runGardener() throws GameActionException {
-        int squadronMembersBuilt = 6;
+        int squadronMembersBuilt = 0;
         boolean squadronBuilder = false;
 
         if (rc.getRoundNum() <= 3){
@@ -98,15 +106,16 @@ public strictfp class RobotPlayer {
                 // Generate a random direction
                 Direction dir = randomDirection();
 
-                if (squadronMembersBuilt == 3){
+                if (squadronMembersBuilt == MAX_SQUADRON_MEMBERS - 1){
                     squadronMembersBuilt = 0;
                 }
 
-                if (rc.canBuildRobot(RobotType.LUMBERJACK, dir) && rc.isBuildReady() && squadronBuilder) {
-                    rc.buildRobot(RobotType.LUMBERJACK, dir);
-                    squadronMembersBuilt += 1;
-                }
-
+                //if (squadronMembersBuilt == 0) {
+                    if (rc.canBuildRobot(RobotType.LUMBERJACK, dir) && rc.isBuildReady() && squadronBuilder) {
+                        rc.buildRobot(RobotType.LUMBERJACK, dir);
+                        squadronMembersBuilt += 1;
+                    }
+                //}
                 if (squadronMembersBuilt == 0) {
                     // Move randomly
                    pathTo(randomDirection());
@@ -170,13 +179,11 @@ public strictfp class RobotPlayer {
             squadronNr = rc.readBroadcast(0) - 1;
             int readMsg = rc.readBroadcast(squadronNr);
             rc.broadcast(squadronNr, readMsg + 1);
-            squadronMemberMove();
+            squadronMemberControl();
         }
     }
 
     static void commanderMove() throws GameActionException{
-
-        Team enemy = rc.getTeam().opponent();
         boolean isGoingSomewhere = false;
         int spawnCounter = 0;
         int timesBeenToEnemySpawn = 0;
@@ -189,119 +196,59 @@ public strictfp class RobotPlayer {
             // Try/catch blocks stop unhandled exceptions, which cause your robot to explode
             try {
                 myLocation = rc.getLocation();
-                // If there aren't enough members to form a squadron wait
-                if (rc.readBroadcast(squadronNr) >= 2) {
-                    // See if there are any enemy robots within striking  range (distance 1 from lumberjack's radius)
-                    RobotInfo[] robots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, enemy);
+                if (rc.getHealth() > RobotType.LUMBERJACK.maxHealth * .1) {
+                    // If there aren't enough members to form a squadron wait
+                    if (rc.readBroadcast(squadronNr) >= MAX_SQUADRON_MEMBERS - 1) {
+                        commanderAttack();
 
-                    // See if there are any allied robots within striking range (distance 1 from lumberjack's radius)
-                    RobotInfo[] alliedRobots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, rc.getTeam());
+                        if (!rc.hasMoved() && !rc.hasAttacked()) {
+                            if (isGoingSomewhere) {
+                                toSomeSpawn = myLocation.directionTo(someSpawn);
 
-                    if (robots.length > 0 && rc.getHealth() <= RobotType.LUMBERJACK.maxHealth * .25){
-                        rc.broadcast(squadronNr,99999);
-                    }
+                                pathTo(toSomeSpawn);
+                                rc.broadcast(squadronNr, encodeCoordinates(Math.round(myLocation.x), Math.round(myLocation.y)));
+                                rc.broadcast(squadronNr + 1, SQUADRON_MOVE_CODE);
+                            } else if (rc.onTheMap(rc.getLocation().add(startingEnemyDirection, RobotType.LUMBERJACK.sensorRadius - 0.1f)) && timesBeenToEnemySpawn != startingEnemyPos.length) {
+                                //System.out.println("Going to their spawn");
+                                //if you're not close to the end of the map and you can move go towards the enemy spawn
+                                startingEnemyDirection = myLocation.directionTo(startingEnemyPos[timesBeenToEnemySpawn]);
+                                pathTo(startingEnemyDirection);
+                                int encodedmessage = encodeCoordinates(Math.round(myLocation.x), Math.round(myLocation.y));
+                                rc.broadcast(squadronNr + 1, SQUADRON_MOVE_CODE);
+                                rc.broadcast(squadronNr, encodedmessage);
+                            } else if (isStuckInCorner() && !isGoingSomewhere) {
+                                if (spawnCounter == mapLocations.length) {
+                                    spawnCounter = 0;
+                                }
+                                someSpawn = mapLocations[spawnCounter];
+                                toSomeSpawn = myLocation.directionTo(someSpawn);
+                                isGoingSomewhere = true;
 
-                    if (robots.length > 0 && !rc.hasAttacked()) {
-                        RobotInfo target = robots[0];
-                        for (RobotInfo bot : robots){
-                            if (bot.getType() == RobotType.ARCHON){
-                                target = bot;
-                                break;
-                            }else if (bot.getType() == RobotType.GARDENER){
-                                target = bot;
-                                break;
-                            }
-                        }
-                        if (alliedRobots.length == 0) {
-                            // Check if you can kill the enemy robot
-                            if (RobotType.LUMBERJACK.attackPower >= target.getHealth()) ;
-                            {
-                                rc.broadcast(squadronNr, encodeMessage(Math.round(target.getLocation().x), Math.round(target.getLocation().y)));
-                                rc.broadcast(squadronNr + 1, 0);
-                            }
-
-                            // Use strike() to hit all nearby robots!
-                            rc.strike();
-                            rc.broadcast(squadronNr, encodeMessage(Math.round(target.getLocation().x), Math.round(target.getLocation().y)));
-                            rc.broadcast(squadronNr + 1, robots[0].getID());
-                        } else {
-                            Direction oppositeDirection = myLocation.directionTo(alliedRobots[0].getLocation()).opposite();
-                            if (rc.canMove(oppositeDirection, GameConstants.LUMBERJACK_STRIKE_RADIUS)) {
-                                 rc.move(oppositeDirection, GameConstants.LUMBERJACK_STRIKE_RADIUS);
+                                pathTo(toSomeSpawn);
+                                spawnCounter += 1;
+                                rc.broadcast(squadronNr, encodeCoordinates(Math.round(myLocation.x), Math.round(myLocation.y)));
+                                rc.broadcast(squadronNr + 1, SQUADRON_MOVE_CODE);
                             } else {
-                                rc.strike();
-                            }
-                        }
-                        rc.broadcast(squadronNr, encodeMessage(Math.round(target.getLocation().x), Math.round(target.getLocation().y)));
-                        rc.broadcast(squadronNr + 1,target.getID());
-                    } else if (rc.senseNearbyRobots(-1, enemy).length > 0) {
-                        // No close robots, so search for robots within sight radius
-                        robots = rc.senseNearbyRobots(-1, enemy);
-
-                        RobotInfo target = robots[0];
-                        for (RobotInfo bot : robots){
-                            if (bot.getType() == RobotType.ARCHON){
-                                target = bot;
-                                break;
-                            }else if (bot.getType() == RobotType.GARDENER){
-                                target = bot;
-                                break;
+                                tryMove(randomDirection());
+                                rc.broadcast(squadronNr, encodeCoordinates(Math.round(myLocation.x), Math.round(myLocation.y)));
+                                rc.broadcast(squadronNr + 1, SQUADRON_MOVE_CODE);
+                                //System.out.println("Walking randomly");
                             }
                         }
 
-                        // If there is a robot, move towards it
-
-                        MapLocation enemyLocation = target.getLocation();
-                        Direction toEnemy = myLocation.directionTo(enemyLocation);
-
-                        pathTo(toEnemy);
-
-                        rc.broadcast(squadronNr, encodeMessage(Math.round(target.getLocation().x), Math.round(target.getLocation().y)));
-                        rc.broadcast(squadronNr + 1,target.getID());
-                        //System.out.println("GOING TO FUCK SHIT UP");
-                    } else if (isGoingSomewhere) {
-                        toSomeSpawn = myLocation.directionTo(someSpawn);
-
-                        pathTo(toSomeSpawn);
-                        rc.broadcast(squadronNr, encodeMessage(Math.round(myLocation.x), Math.round(myLocation.y)));
-                        rc.broadcast(squadronNr + 1, 0);
-                    } else if (rc.onTheMap(rc.getLocation().add(startingEnemyDirection, RobotType.LUMBERJACK.sensorRadius - 0.1f)) && timesBeenToEnemySpawn != startingEnemyPos.length) {
-                        //System.out.println("Going to their spawn");
-                        //if you're not close to the end of the map and you can move go towards the enemy spawn
-                        startingEnemyDirection = myLocation.directionTo(startingEnemyPos[timesBeenToEnemySpawn]);
-                        pathTo(startingEnemyDirection);
-                        int encodedmessage = encodeMessage(Math.round(myLocation.x), Math.round(myLocation.y));
-                        rc.broadcast(squadronNr + 1, 0);
-                        rc.broadcast(squadronNr, encodedmessage);
-                    } else if (isStuckInCorner() && !isGoingSomewhere) {
-                        if (spawnCounter == mapLocations.length) {
-                            spawnCounter = 0;
+                        if (timesBeenToEnemySpawn < startingTeamPos.length) {
+                            if (rc.canSenseLocation(startingEnemyPos[timesBeenToEnemySpawn])) {
+                                timesBeenToEnemySpawn += 1;
+                            }
                         }
-                        someSpawn = mapLocations[spawnCounter];
-                        toSomeSpawn = myLocation.directionTo(someSpawn);
-                        isGoingSomewhere = true;
-                        //tryMove(toSomeSpawn);
-                        //tryBug(toSomeSpawn);
-                        pathTo(toSomeSpawn);
-                        spawnCounter += 1;
-                        rc.broadcast(squadronNr, encodeMessage(Math.round(myLocation.x), Math.round(myLocation.y)));
-                        rc.broadcast(squadronNr + 1, 0);
-                    } else {
-                        tryMove(randomDirection());
-                        rc.broadcast(squadronNr, encodeMessage(Math.round(myLocation.x), Math.round(myLocation.y)));
-                        rc.broadcast(squadronNr + 1, 0);
-                        //System.out.println("Walking randomly");
-                    }
 
-                    if (timesBeenToEnemySpawn < startingTeamPos.length) {
-                        if (rc.canSenseLocation(startingEnemyPos[timesBeenToEnemySpawn])) {
-                            timesBeenToEnemySpawn += 1;
+                        if (rc.canSenseLocation(someSpawn)) {
+                            isGoingSomewhere = false;
                         }
                     }
-
-                    if (rc.canSenseLocation(someSpawn)) {
-                        isGoingSomewhere = false;
-                    }
+                }else{
+                    rc.broadcast(squadronNr + 1,COMMANDER_SWITCH_CODE);
+                    commanderAttack();
                 }
                 // Clock.yield() makes the robot wait until the next turn, then it will perform this loop again
                 Clock.yield();
@@ -313,79 +260,103 @@ public strictfp class RobotPlayer {
         }
     }
 
-    static void squadronMemberMove() throws GameActionException{
-        while (true) {
+    static void squadronMemberControl() throws GameActionException{
+        while (true){
             try {
-                myLocation = rc.getLocation();
                 int broadcast = rc.readBroadcast(squadronNr);
-                if (rc.readBroadcast(squadronNr) != 99999) {
-                    if (rc.readBroadcast(squadronNr) > 2) {
-                        int[] decodedBroadcast = decodedMessage(broadcast).clone();
-                        int broadcastedID = rc.readBroadcast(squadronNr + 1);
-                        MapLocation location = new MapLocation(decodedBroadcast[0], decodedBroadcast[1]);
-                        if (broadcastedID == 0) {
-                            Direction toTarget = myLocation.directionTo(location);
-                            MapLocation offset1 = location.add(toTarget.rotateLeftDegrees(90), GameConstants.LUMBERJACK_STRIKE_RADIUS);
-                            MapLocation offset2 = location.add(toTarget.rotateRightDegrees(90), GameConstants.LUMBERJACK_STRIKE_RADIUS);
-                            if (myLocation.distanceTo(offset1) > myLocation.distanceTo(offset2)) {
-                                location = offset2;
-                            } else {
-                                location = offset1;
-                            }
-                            pathTo(location);
-                        } else {
-                            // See if there are any enemy robots within striking range (distance 1 from lumberjack's radius)
-                            RobotInfo[] robots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, rc.getTeam().opponent());
-                            RobotInfo target = null;
-                            for (RobotInfo robot : robots) {
-                                if (robot.ID == broadcastedID) {
-                                    target = robot;
-                                    break;
-                                }
-                            }
-
-                            // See if there are any allied robots within striking range (distance 1 from lumberjack's radius)
-                            RobotInfo[] alliedRobots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, rc.getTeam());
-
-                            if (target != null && !rc.hasAttacked()) {
-                                Direction toTarget = myLocation.directionTo(location);
-                                MapLocation offset1 = location.add(toTarget.rotateLeftDegrees(90));
-                                MapLocation offset2 = location.add(toTarget.rotateRightDegrees(90));
-                                if (myLocation.distanceTo(offset1) > myLocation.distanceTo(offset2)) {
-                                    location = offset2;
-                                } else {
-                                    location = offset1;
-                                }
-
-                                if (alliedRobots.length == 0) {
-                                    // Use strike() to hit all nearby robots!
-                                    rc.strike();
-                                } else {
-                                    Direction oppositeDirection = myLocation.directionTo(alliedRobots[0].location).opposite();
-                                    if (rc.canMove(oppositeDirection, GameConstants.LUMBERJACK_STRIKE_RADIUS -.1f)) {
-                                        rc.move(oppositeDirection, GameConstants.LUMBERJACK_STRIKE_RADIUS - .1f);
-                                    } else {
-                                        if (alliedRobots.length == 1) {
-                                            rc.strike();
-                                        }
-                                    }
-                                }
-                            } else if (target == null) {
-                                //tryMove(rc.getLocation().directionTo(location));
-                                //tryBug(myLocation.directionTo(location));
-                                pathTo(location);
-                            }
-                        }
+                int broadcastedId = rc.readBroadcast(squadronNr + 1);
+                if (broadcast > MAX_SQUADRON_MEMBERS - 1) {
+                    switch (broadcastedId) {
+                        case COMMANDER_SWITCH_CODE:
+                            commanderMove();
+                            break;
+                        case TARGET_KILLED_CODE:
+                            directionToEnemy = null;
+                            break;
+                        default:
+                            squadronMemberMove(broadcast, broadcastedId);
+                            break;
                     }
-                }else{
-                    commanderMove();
                 }
                 Clock.yield();
-            } catch (GameActionException x) {
-                System.out.println("Squadron member exception");
+            }catch (Exception x){
+                System.out.println(x);
             }
         }
     }
+
+    static void squadronMemberMove(int broadcast,int broadcastedID) throws GameActionException{
+        myLocation = rc.getLocation();
+        int[] decodedBroadcast = decodeCoordinates(broadcast).clone();
+        MapLocation broadcastedLocation = new MapLocation(decodedBroadcast[0], decodedBroadcast[1]);
+        if (broadcastedID != SQUADRON_MOVE_CODE) {
+            RobotInfo[] meleeRangeEnemies = rc.senseNearbyRobots(rc.getType().bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, enemyteam);
+            RobotInfo[] sensorRangeEnemies = rc.senseNearbyRobots(rc.getType().sensorRadius, enemyteam);
+
+            RobotInfo target = null;
+            boolean melee = false;
+
+            if (sensorRangeEnemies.length > 0) {
+                if (meleeRangeEnemies.length > 0) {
+                    for (RobotInfo robotInfo : meleeRangeEnemies) {
+                        if (robotInfo.getID() == broadcastedID) {
+                            target = robotInfo;
+                            melee = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (target == null) {
+                    for (RobotInfo robotInfo : sensorRangeEnemies) {
+                        if (robotInfo.getID() == broadcastedID) {
+                            target = robotInfo;
+                            break;
+                        }
+                    }
+                }
+
+                if (target != null) {
+                    if (directionToEnemy == null) {
+                        directionToEnemy = myLocation.directionTo(target.getLocation());
+                    }
+                        MapLocation offsetLocation = target.location.add(directionToEnemy.rotateRightDegrees(90), target.getType().bodyRadius + rc.getType().bodyRadius);
+
+                        if (melee) {
+                            float stickyDistance = rc.getType().bodyRadius + target.getType().bodyRadius;
+                            float distanceToEnemy = myLocation.distanceTo(target.location);
+                            //avoidFriendlyFire(target.getLocation());
+                            if (distanceToEnemy > stickyDistance && !rc.hasMoved()) {
+                                tryMove(myLocation.directionTo(offsetLocation));
+                                if (canKill(target)){
+                                    rc.broadcast(squadronNr + 1,TARGET_KILLED_CODE);
+                                }
+                                RobotInfo[] alliedRobots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, rc.getTeam());
+
+                                if (alliedRobots.length < 1) {
+                                    rc.strike();
+                                }
+                            }else if (distanceToEnemy <= stickyDistance){
+                                RobotInfo[] alliedRobots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, rc.getTeam());
+
+                                if (alliedRobots.length < 1) {
+                                    rc.strike();
+                                }
+                            }
+                        } else {
+                            tryMove(myLocation.directionTo(offsetLocation));
+                        }
+                    }
+                } else {
+                    pathTo(broadcastedLocation);
+                }
+            }else{
+                pathTo(broadcastedLocation);
+            }
+        }
+
+
+
 
     /**
      * Returns a random Direction
@@ -519,30 +490,30 @@ public strictfp class RobotPlayer {
 
      //Paths to the given MapLocation
      static void pathTo(MapLocation goalLocation) throws GameActionException {
-        int rageMeter = 0;
         //Registers current map location as previous map location
         MapLocation prevLocation = myLocation;
 
         //Makes a direction from current position to goal location
         Direction goal = myLocation.directionTo(goalLocation);
 
-        TreeInfo[] nearbyTrees = rc.senseNearbyTrees(RobotType.LUMBERJACK.sensorRadius);
 
         //If there is no previous moving direction make it the same as goal direction
         if (wasGoing == null){
             wasGoing = goal;
         }
 
+        if (rageMeter >= MAX_RAGE && rc.getType() == RobotType.LUMBERJACK){
+            goBallistic(goalLocation);
+            return;
+        }
+
         //If it can move to goal direction do so
         if (rc.canMove(goal)){
             rc.move(goal);
             myLocation = rc.getLocation();
-            rageMeter -= 4;
-            System.out.println("Can Move");
         }else{
-            //If it cannot check the rage meter
-            if (rageMeter < 100){
-                //If it can go at the same direction that it was going before continue
+            rageMeter += 1;
+            //If it can go at the same direction that it was going before continue
                 if (rc.canMove(wasGoing)){
                     rc.move(wasGoing);
 
@@ -554,35 +525,36 @@ public strictfp class RobotPlayer {
                     if (closestDirection != null){
                         rc.move(closestDirection);
                         myLocation = rc.getLocation();
-                    }else{
-                        //If it cant get very angry and say something mean in the console
-                       // System.out.println("IMMA CHOP NOW");
                     }
-                }
-            }else{
-                //This aint my code so idk
-                if (nearbyTrees.length > 3) {
-                    MapLocation closestTree = new MapLocation(nearbyTrees[0].getLocation().x, nearbyTrees[0].getLocation().y);
-                    if (rc.canChop(closestTree)) {
-                        rc.chop(closestTree);
-                    }
-                }
-            }
-        }
 
+                }
+
+        }
         //If it actually moved this turn update the previous direction with the direction that it moved
         if (prevLocation != rc.getLocation()) {
             wasGoing = prevLocation.directionTo(myLocation);
         }
     }
-
+    static void goBallistic(MapLocation goalLocation) throws GameActionException{
+        System.out.println("FUCK YOU TREES");
+        if (rc.canMove(goalLocation)){
+            rc.move(goalLocation);
+            rageMeter -= 2;
+        }else{
+            TreeInfo[] trees = rc.senseNearbyTrees(rc.getType().bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS);
+            if (trees.length > 0 && rc.canChop(trees[0].getLocation())) {
+                rc.chop(trees[0].getLocation());
+            }else if(trees.length == 0){
+                rageMeter = 0;
+            }
+        }
+    }
     /**
         It checks for the best angle to path to.
         @param goal The goal direction where we want to go
         @param goalLocation The goal location where we want to go
         @return Returns the angle that seems better
      **/
-
     static Direction checkBestAngle(Direction goal,MapLocation goalLocation) throws GameActionException{
         //The angle that is going to be returned
         Direction bestAngle;
@@ -605,9 +577,8 @@ public strictfp class RobotPlayer {
                 highPriority = 2;
                 medPriority = 1;
             }
-        }else{
-            System.out.println("same");
         }
+
 
         // Finds similar angles to the highPriority side left/right if it cant move to the high priority
         // check the medium priority, if it can't move to that either return null
@@ -641,11 +612,9 @@ public strictfp class RobotPlayer {
                     }
                 case 1:
                     direction = direction.rotateLeftDegrees(i);
-                    System.out.println(direction);
                     break;
                 case 2:
                     direction = direction.rotateRightDegrees(i);
-                    System.out.println(direction);
                     break;
             }
             if (rc.canMove(direction)){
@@ -687,16 +656,137 @@ public strictfp class RobotPlayer {
         return  false;
     }
 
-    static int encodeMessage(int x, int y){
+    static int encodeCoordinates(int x, int y){
         int encodedMessage = (x * 1000) + y;
         return encodedMessage;
     }
 
-    static int[] decodedMessage(int msg){
+    static int[] decodeCoordinates(int msg){
         int[] messageParts = new int[2];
         messageParts[1] = msg % 1000;
         msg = msg / 1000;
         messageParts[0] = msg;
         return messageParts;
+    }
+
+    static void commanderAttack() throws GameActionException { //or not
+        RobotInfo[] meleeRangeEnemies = rc.senseNearbyRobots(rc.getType().bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, enemyteam);
+        RobotInfo[] sensorRangeEnemies = rc.senseNearbyRobots(rc.getType().sensorRadius, enemyteam);
+        RobotInfo[] alliedRobots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, rc.getTeam());
+
+        RobotInfo target = null;
+        boolean canAttackImportantTargets = false;
+        boolean melee = false;
+
+        // If there are enemies in sensor range
+        if (sensorRangeEnemies.length > 0) {
+            //If there are enemies in melee range
+            if (meleeRangeEnemies.length > 0) {
+
+                if (rc.getHealth() <= RobotType.LUMBERJACK.maxHealth * .25){
+                    rc.broadcast(squadronNr + 1,COMMANDER_SWITCH_CODE);
+                }
+
+                for (RobotInfo robotInfo : meleeRangeEnemies) {
+                    if (robotInfo.getType() == RobotType.ARCHON) {
+                        target = robotInfo;
+                        canAttackImportantTargets = true;
+                    } else if (robotInfo.getType() == RobotType.GARDENER) {
+                        target = robotInfo;
+                        canAttackImportantTargets = true;
+                    }
+                }
+                // If there arent any important targets in melee range pick the closest enemy as a target
+                if (!canAttackImportantTargets) {
+                    target = meleeRangeEnemies[0];
+                }
+                melee = true;
+            }
+
+            // If there arent any important targets in melee range search for targets in sensor radius
+            if (!canAttackImportantTargets) {
+                for (RobotInfo robotInfo : sensorRangeEnemies) {
+                    if (robotInfo.getType() == RobotType.ARCHON) {
+                        target = robotInfo;
+                        melee = false;
+                    } else if (robotInfo.getType() == RobotType.GARDENER) {
+                        target = robotInfo;
+                        melee = false;
+                    }
+                }
+                // If there is no target in melee pick the closest on in sensor radius
+                if (target == null) {
+                    target = sensorRangeEnemies[0];
+                }
+            }
+
+            if (directionToEnemy == null){
+                directionToEnemy = myLocation.directionTo(target.getLocation());
+            }
+
+            MapLocation offsetLocation = target.location.add(directionToEnemy.rotateLeftDegrees(90),target.getType().bodyRadius + rc.getType().bodyRadius);
+            if (melee){
+                float stickyDistance = rc.getType().bodyRadius + target.getType().bodyRadius;
+                float distanceToEnemy = myLocation.distanceTo(target.location);
+                //avoidFriendlyFire(target.getLocation());
+                if (distanceToEnemy > stickyDistance && !rc.hasMoved()){
+                    tryMove(myLocation.directionTo(offsetLocation));
+                    alliedRobots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, rc.getTeam());
+
+                    if (alliedRobots.length < 2) {
+                        rc.strike();
+                    }
+                }else if (distanceToEnemy <= stickyDistance && alliedRobots.length < 2){
+                    rc.strike();
+                }
+            }else{
+                    tryMove(myLocation.directionTo(offsetLocation));
+            }
+            if (rc.getHealth() > RobotType.LUMBERJACK.maxHealth * .1) {
+                rc.broadcast(squadronNr, encodeCoordinates(Math.round(target.getLocation().x), Math.round(target.getLocation().y)));
+                rc.broadcast(squadronNr + 1, target.getID());
+            }else{
+                rc.disintegrate();
+            }
+        }
+    }
+
+    static void avoidFriendlyFire(MapLocation target) throws GameActionException{
+        RobotInfo[] alliedRobots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS, rc.getTeam());
+
+        if (alliedRobots.length == 0){
+            rc.strike();
+        }
+        else if (alliedRobots.length == 1){
+            Direction meToTarget = myLocation.directionTo(target);
+            Direction allyToTarget = alliedRobots[0].getLocation().directionTo(target);
+
+            float distanceToAlly = myLocation.distanceTo(alliedRobots[0].getLocation());
+            float distanceInitial = allyToTarget.degreesBetween(meToTarget);
+            float distanceSecond = allyToTarget.degreesBetween(meToTarget.rotateLeftDegrees(1));
+            float bigRadius = rc.getType().bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS;
+            float distanceToMove = RobotType.LUMBERJACK.bodyRadius + bigRadius - distanceToAlly;
+
+            if (distanceInitial >= distanceSecond){
+                if (rc.canMove(meToTarget.rotateRightDegrees(90),distanceToMove)) {
+                    rc.move(meToTarget.rotateRightDegrees(90), distanceToMove);
+                    rc.strike();
+                }
+            }else{
+                if (rc.canMove(meToTarget.rotateRightDegrees(90),distanceToAlly)) {
+                    rc.move(meToTarget.rotateRightDegrees(90), distanceToAlly);
+                    rc.strike();
+                }
+            }
+        }else {
+            Clock.yield();
+        }
+    }
+
+    static boolean canKill(RobotInfo target){
+        if (myLocation.distanceTo(target.getLocation()) <= rc.getType().bodyRadius + GameConstants.LUMBERJACK_STRIKE_RADIUS && target.getHealth() <= rc.getType().attackPower){
+            return true;
+        }
+        return false;
     }
 }
